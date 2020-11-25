@@ -1,0 +1,86 @@
+---
+title: "Test Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(leaflet)
+library(plotly)
+library(tidycensus)
+
+educ_attainment_plot <- readRDS("educ_attainment_map.rds")
+hs_completion_plot <- readRDS("hs_fig.rds")
+bachelors_plot <- readRDS("bachelors_fig.rds")
+sc_educ_exnative <- readRDS("sc_educ_exnative.rds")
+internet_acc_map <- readRDS("internet_acc_map.rds")
+per_internetacc <- readRDS("perc_internetacc.rds")
+sc_educ_mobility <- readRDS("sc_flows_19.rds")
+```
+
+Page 1
+=======================================================================
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Santa Clara County Educational Attainment by Race 
+
+All of the graphics displayed below were derived from a statistical evaluation of educational attainment by race in Santa Clara, as it is recorded in the Census. Since this is an analysis by race, rather than ethnicity, the race variable for White respondents encompasses Hispanic White respondents as well. Additionally, since ethnic groups have been excluded from this analysis, Latino populations are not represented in the data. Lastly, please note that all of the datasets on educational attainment in the American Communities Survey are recorded for respondents age 25 and older.
+
+Given the graphs and charts displayed above, there is a clear disparity in educational attainment by race in Santa Clara County. Though 54% of Santa Clara residents are non-white, non-white respondents make up over 60% of respondents age 25 or older who have not obtained a High School diploma. Moreover, Asian and White respondents make up over 93% of those with a Bachelor’s Degree or Higher in Santa Clara, with Black or African American respondents accounting for only 2% of that population. While these findings illuminate a striking disparity in educational attainment by race in Santa Clara County, given that 25% of residents in Santa Clara are Latino/Hispanic, future study on this topic would benefit greatly from evaluating ethnic breakdowns as well.
+
+```{r}
+educ_attainment_plot
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### High School Completion by Race in Santa Clara County
+
+```{r}
+hs_completion_plot
+```
+
+### Santa Clara County Residents with a Graduates' Degree or Greater 
+
+```{r}
+bachelors_plot
+```
+Page 2
+=======================================================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+In Santa Clara County 38.54% of students (or 7,894 students total) grades K-12 are without internet access. As shown in the map above,the majority of these students are concentrated in San Jose. Given the large number of students without access to internet in San Jose, it is reasonable to assume that the neighborhoods within this city are characterized by low median household incomes, and a significant portion of the city's population living below the poverty line. In the context of COVID-19, this data becomes especially pertinent. As millions of students have been required to attend online school, students without internet access at home are in danger of falling behind. With information like this, school districts and companies can ensure that each student can participate in online school by providing mobile hot spots, or discounted internet service plans.
+
+### K-12 Students without Internet Access in Santa Clara County
+
+```{r}
+internet_acc_map
+```
+
+### Educational Mobility in Santa Clara County
+
+Page 3
+=======================================================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+```{r}
+sc_educ_mobility
+```
+
+
+
+
+
+
+

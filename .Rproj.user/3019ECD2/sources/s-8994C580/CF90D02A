@@ -1,0 +1,25 @@
+{
+    "id": "CF90D02A",
+    "path": "~/GitHub/Assignment2/Assignment2.Rmd",
+    "project_path": null,
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1606193210057.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "cursorPosition": "648,871",
+        "scrollLine": "644",
+        "chunk_output_type": "console"
+    },
+    "folds": "13|101|287|0|\n288|78|452|0|\n",
+    "lastKnownWriteTime": 1606265572,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1606266139510,
+    "read_only": false,
+    "read_only_alternatives": []
+}

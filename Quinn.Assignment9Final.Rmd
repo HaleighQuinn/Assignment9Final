@@ -1,0 +1,49 @@
+---
+title: "Haleigh Quinn Assigment 9"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r global, include = F}
+library(flexdashboard)
+library(plotly)
+library(tigris)
+library(leaflet)
+library(tidyverse)
+library(tidycensus)
+library(dplyr)
+library(sf)
+
+hs_completion <- readRDS("hs_fig.rds")
+bachelors_race <- readRDS("bachelors_fig.rds")
+
+
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+hs_completion
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+
+```
+
+### Chart C
+
+```{r}
+
+```
+
+

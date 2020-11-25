@@ -1,0 +1,650 @@
+---
+title: "Assignment 2"
+author: "Haleigh Quinn"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+knitr::opts_chunk$set(warning = F, message = F)
+```
+
+## _Equity Analysis: Is There Disproportionate Educational Attainment by Race in Santa Clara County?_
+```{r}
+library(tidyverse)
+  library(sf)
+  library(tigris)
+  library(leaflet)
+  library(censusapi)
+  library(dplyr)
+
+# Census Key: 
+Sys.setenv(CENSUS_KEY="6e3cadd908fdaf8f7d3d728f4faa99e738db811a")
+
+# Loading Contents of 1-year Data Dictionary
+acs_vars_2019_1yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs1",
+    type = "variables"
+  )
+
+saveRDS(acs_vars_2019_1yr, "acs_vars_2019_1yr.rds")
+
+# Creating Educational Attainment Dataframe by Race: 
+
+census_race_labels <- 
+  c(
+    "White alone",
+    "Black or African American",
+    "American Indian and Alaska Native Alone",
+    "Asian Alone",
+    "Native Hawaiian and Other Pacific Islander Alone)",
+    "Some Other Race Alone",
+    "Two or More Races"
+  )
+
+
+sc_educ_race <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs1",
+      vintage = 2019,
+      region = "county:085",
+      regionin = "state:06",
+      vars = paste0("group(B15002",LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "variable",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_1yr %>% 
+          select(name,label), 
+        by = c("variable" = "name")
+      ) %>% 
+      select(-variable) %>% 
+      separate(
+        label,
+        into = c(NA, "sex", "education"),
+        sep = ":!!" 
+      ) %>% 
+      filter(!is.na(education)) %>% 
+      mutate(race = census_race_labels[x])
+  })
+
+# Remove Native Hawaiian and Other Pacific Islander Alone b/c there are no estimates for this catagory 
+sc_educ_exnative <-
+  sc_educ_race[-c(65:80), ]
+  
+
+sc_race_total <-
+  sc_educ_exnative %>% 
+  group_by(race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  mutate(education = "Total")
+
+educ_attainment_map <-
+sc_educ_exnative %>% 
+  group_by(education, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(sc_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(c("Total",sc_educ_exnative$education[1:8]))),
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Educational Attainment Level",
+    y = "Proportion of Race",
+    title = "Santa Clara County Educational Attainment by Race",
+    fill = "Race of Respondent"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+
+saveRDS(sc_educ_exnative, "sc_educ_exnative.rds")
+
+saveRDS(educ_attainment_map, "educ_attainment_map.rds")
+
+# Analysis:
+
+  # What percentage of the overall population in Santa Clara is non-white? 
+    ((sum(sc_race_total$estimate[1:5])/sum(sc_race_total$estimate))*100) %>% round()
+      # 54% of Santa Clara's overall population is non-white. 
+
+
+  # What percentage of the overall population in Santa Clara is Black or African American? 
+  ((sum(sc_race_total$estimate[3])/sum(sc_race_total$estimate))*100) %>% round()
+    # 2% of Santa Clara's overall population is Black or African American. 
+
+     # What percentage of black respondents in Santa Clara County have a Bachelor's Degree or greater? 
+        ((sc_educ_exnative %>% 
+        filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+        filter(race == "Black or African American") %>% 
+        pull(estimate) %>% 
+        sum()) /
+        (sc_educ_exnative %>% 
+            filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+            pull(estimate) %>% 
+            sum()) * 100) %>% 
+            round()
+  
+        # Out of all respondents who have earned a bachelor's degree or higher, 2% are Black or African American. 
+        
+    # What percentage of white respondents in Santa Clara County have a Bachelor's Degree or greater? 
+        ((sc_educ_exnative %>% 
+        filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+        filter(race == "White alone") %>% 
+        pull(estimate) %>% 
+        sum()) /
+        (sc_educ_exnative %>% 
+            filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+            pull(estimate) %>% 
+            sum()) * 100) %>% 
+            round()
+        
+        # Out of all respondents who have earned a bachelor's degree or higher, 44% are White. 
+        
+     # What percentage of Asian respondents in Santa Clara County have a Bachelor's Degree or greater? 
+        ((sc_educ_exnative %>% 
+        filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+        filter(race == "Asian Alone") %>% 
+        pull(estimate) %>% 
+        sum()) /
+        (sc_educ_exnative %>% 
+            filter(education %in% sc_educ_exnative$education[7:8]) %>% 
+            pull(estimate) %>% 
+            sum()) * 100) %>% 
+            round() 
+        
+        # Out of all respondents who have earned a bachelor's degree or higher, 49% are Asian
+
+## Pie Chart: Percentage Breakdown of Bachelor's Degree or Greater by Race in Santa Clara County
+
+library(plotly)
+
+colors <- c('rgb(102,102,255)', 'rgb(178,102,255)', 'rgb(255,102,178)', 'rgb(102,178,255)', 'rgb(255,178,102)', 'rgb(255,102,102)')
+  
+bachelors_chart <- 
+  sc_educ_exnative %>% 
+        filter(education %in% c("Bachelor's degree", "Graduate or professional degree")) %>% 
+        group_by(education, race) %>% 
+        summarize(estimate = sum(estimate))
+
+bachelors_fig <- 
+  plot_ly(bachelors_chart, labels = ~race, values = ~estimate,
+          type = 'pie', 
+          textposition = 'outside', 
+          textinfo = 'percent', 
+          outsidetextfont = list(color = '#404040'),
+          hoverinfo = 'text', 
+          text = ~paste(estimate, 'respondents'), 
+          marker = list(colors = colors, 
+                        line = list(color = '#FFFFFF', width = 0.5)), 
+          showlegend = TRUE)
+
+
+bachelors_fig <- 
+  bachelors_fig %>% 
+  layout(title = "% Respondents over 25 with a Bachelor's Degree or Greater by Race",
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, cex.lab = 0.5),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+bachelors_fig
+
+saveRDS(bachelors_fig, "bachelors_fig.rds")
+
+  # What percentage of non-white respondents did not complete high school? 
+        ((sc_educ_exnative %>% 
+        filter(education %in% sc_educ_exnative$education[1:2]) %>% 
+        filter(race != "White alone") %>% 
+        pull(estimate) %>% 
+        sum()) /
+        (sc_educ_exnative %>% 
+            filter(education %in% sc_educ_exnative$education[1:2]) %>% 
+            pull(estimate) %>% 
+            sum()) * 100) %>% 
+            round()
+            # 61% of non-white respondents did not complete high school
+        
+  # What percentage of white respondents did not complete high school? 
+        ((sc_educ_exnative %>% 
+        filter(education %in% sc_educ_exnative$education[1:2]) %>% 
+        filter(race == "White alone") %>% 
+        pull(estimate) %>% 
+        sum()) /
+        (sc_educ_exnative %>% 
+            filter(education %in% sc_educ_exnative$education[1:2]) %>% 
+            pull(estimate) %>% 
+            sum()) * 100) %>% 
+            round()
+        # 39% of white respondents did not complete high school
+        
+## Pie Chart: Percentage Breakdown of High School Completion by Race in Santa Clara County    
+        
+colors <- c('rgb(102,102,255)', 'rgb(178,102,255)', 'rgb(255,102,178)', 'rgb(102,178,255)', 'rgb(255,178,102)', 'rgb(255,102,102)')
+  
+hs_chart <- 
+  sc_educ_exnative %>% 
+       filter(education %in% c("Less than 9th grade", "9th to 12th grade, no diploma")) %>% 
+        mutate(
+          race = ifelse(
+          race != "White alone",
+          "Nonwhite", 
+          "White alone"
+        ) ) %>% 
+        group_by(education, race) %>% 
+        summarize(estimate = sum(estimate))
+
+hs_fig <- 
+  plot_ly(hs_chart, labels = ~race, values = ~estimate,
+          type = 'pie', 
+          textposition = 'outside', 
+          textinfo = 'percent', 
+          insidetextfont = list(color = '#404040'),
+          hoverinfo = 'text', 
+          text = ~paste(estimate, 'respondents'), 
+          marker = list(colors = colors, 
+                        line = list(color = '#FFFFFF', width = 0.5)), 
+          showlegend = TRUE)
+
+
+
+hs_fig <- 
+  hs_fig %>% 
+  layout(title = "% Respondents over 25 without a High School Diploma by Race", 
+         autosize = T
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, cex.lab = 0.5),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+hs_fig
+
+
+saveRDS(hs_fig, "hs_fig.rds")
+
+```
+
+_Analysis_:
+
+  All of the graphics displayed above were derived from a statistical evaluation of educational attainment by race in Santa Clara, as it is recorded in the Census. Since this is an analysis by race, rather than ethnicity,the race variable for White respondents encompasses Hispanic White respondents as well. Additionally, since ethnic groups have been excluded from this analysis, Latino populations are not represented in the data. Lastly, please note that all of the datasets on educational attainment in the American Communities Survey are recorded for respondents age 25 and older.   
+  
+  Given the graphs and charts displayed above, there is a clear disparity in educational attainment by race in Santa Clara County. Though 54% of Santa Clara residents are non-white, non-white respondents make up over 60% of respondents age 25 or older who have not obtained a High School diploma. Moreover, Asian and White respondents make up over 93% of those with a Bachelor's Degree or Higher in Santa Clara, with Black or African American respondents accounting for only 2% of that population. While these findings illuminate a striking disparity in educational attainment by race in Santa Clara County, given that 25% of residents in Santa Clara are Latino/Hispanic, future study on this topic would benefit greatly from evaluating ethnic breakdowns as well.  
+  
+   
+
+## _Migration Analysis: Educational Mobility for Santa Clara County Residents_
+```{r}
+library(censusapi)
+
+# Census Key: 
+Sys.setenv(CENSUS_KEY="6e3cadd908fdaf8f7d3d728f4faa99e738db811a")
+
+# B07009: Counts the current population in the given year, a combination of “people who’ve remained” and “people who’ve immigrated in”
+sc_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:085",
+    regionin = "state:06",
+    vars = c("group(B07009)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA, "mobility", "education"),
+    sep = ":!!"
+  ) %>% 
+    mutate(
+    mobility = ifelse(
+      mobility %in% c("Same house 1 year ago", "Moved within same county"),
+      "Here since last year",
+      "Inflow"
+    )
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+
+# B07409: Counts “people who’ve remained” and “people who were here a year ago but emigrated somewhere else”
+sc_mobility_yrago_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:085",
+    regionin = "state:06",
+    vars = c("group(B07409)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA, "mobility", "education"),
+    sep = ":!!"
+  ) %>% 
+    mutate(
+    mobility = ifelse(
+      mobility %in% c("Same house", "Moved within same county"),
+      "Here since last year",
+      "Outflow"
+    )
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+
+# Total Population Counts in 2018
+acs_vars_2018_1yr <-
+  listCensusMetadata(
+    name = "2018/acs/acs1",
+    type = "variables"
+  )
+
+saveRDS(acs_vars_2018_1yr, "acs_vars_2018_1yr.rds")
+
+sc_mobility_current_18 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2018,
+    region = "county:085",
+    regionin = "state:06",
+    vars = c("group(B07009)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,"mobility", "education"),
+    sep = ":!!"
+  ) %>% 
+  mutate(
+    mobility = "Here last year"
+  ) %>% 
+  filter(!is.na(education)) %>% 
+  group_by(mobility, education) %>% 
+  summarize(estimate = sum(estimate))
+
+# Bind all of the dataframe together: 
+
+sc_flows_19 <-
+  rbind(
+    sc_mobility_current_18,
+    sc_mobility_yrago_19 %>% 
+      filter(mobility == "Outflow"),
+    sc_mobility_current_19 %>% 
+      filter(mobility == "Inflow"),
+    sc_mobility_current_19 %>% 
+      group_by(education) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(mobility = "Here this year")
+  ) %>% 
+  pivot_wider(
+    names_from = mobility,
+    values_from = estimate
+  ) %>% 
+  mutate(
+    `External net` = Inflow - Outflow,
+    `Internal net` = `Here this year` - `Here last year` - `External net`,
+  ) %>% 
+  select(
+    `Educational Attainment` = education, 
+    `Internal net`,
+    `External net`,
+    `Here last year`, 
+    `Here this year`, 
+    Outflow, 
+    Inflow
+  )
+
+sc_flows_19
+
+saveRDS(sc_flows_19, "sc_flows_19")
+
+```
+_Analysis_: 
+
+  The above table indicates a fair amount of educational mobility for Santa Clara County Residents. In regards to the Bachelor's degree education tier, 23,263 people physically left Santa Clara, while 23,027 people moved into Santa Clara, which is represented by an external net flow of -236. However, after accounting for this movement, there remains an additional -4,379 people whose movement is unexplained, as represented by the internal net flow. The population loss of the internal net flow can be attributed to a number of sources. First off, the internal net flow can be accounting for deaths among respondents in the Bachelor's degree education tier. However, it is unlikely that deaths are the major source of the 4,379 person loss. Two other explanations could be that 4,379 people left the country, and thus were not accounted for in the ACS this past year, or that these people moved into a different education tier. Since it is unlikely that 4,379 people left the country, it is most likely that these respondents simply moved into another education tier, like the graduate or professional degree tier. 
+  
+  For the Graduate or professional degree education tier, much of the same logic can be used to explain the internal net flow of -6,143. However, since there is no higher education tier for the population in this category to move into, it is unlikely that the internal net flow can be completely explained by respondents moving into another education tier. Since the internal net flow is positive for the High School graduate, less than High School graduate, and Some college or associate's degree education tiers, it is likely that more people moved into each of these tiers over the past year. Unfortunately, the Less than high school graduate category has an internal net flow of 3780 people, indicating an increase in those over 25 who do not have a high school diploma over the past year. 
+
+## _Microdata Analysis: Number and Percentage of K-12 Students Without Internet Access at Home_
+```{r, eval = F}
+library(tidycensus)
+library(dplyr)
+library(tigris)
+
+census_api_key("6e3cadd908fdaf8f7d3d728f4faa99e738db811a")
+
+# Retrieving Data Dictionary
+pums_vars_2018 <- 
+  pums_variables %>%
+  filter(year == 2018, survey == "acs1")
+
+pums_vars_2018_distinct_hh <- 
+  pums_vars_2018 %>%
+  distinct(var_code, var_label, data_type, level) %>% 
+  filter(level == "housing")
+
+ca_pums <- get_pums(
+  variables = c(
+    "PUMA", 
+    "ACCESS",
+    "SCHG",
+    "AGEP"
+  ),
+  state = "CA",
+  survey = "acs1",
+  year = 2018,
+  recode = T
+)
+
+saveRDS(ca_pums, "ca_pums.rds")
+```
+
+```{r, echo = F}
+library(tidycensus)
+library(dplyr)
+library(tigris)
+
+ca_pums <- readRDS("ca_pums.rds")
+
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+# Filtering to Bay Pumas:
+
+ca_counties <- counties("CA", cb = T, progress_bar = F)
+
+st_crs(ca_counties)
+
+projection <- "+proj=utm +zone=10 +ellps=GRS80 +datum=NAD83 +units=ft +no_defs"
+
+ca_counties_transformed <- 
+  ca_counties %>% 
+  st_transform(4326) %>% 
+  st_transform(26910) %>% 
+  st_transform(projection) %>% 
+  st_transform(st_crs(ca_counties))
+
+usa_zips <- 
+  zctas(cb = T, progress_bar = F)
+
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+
+sc_counties <-
+  ca_counties %>%
+  filter(NAME %in% "Santa Clara")
+
+library(mapview)
+
+sc_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[sc_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+sc_pums <-
+  ca_pums %>% 
+  filter(PUMA %in% sc_pumas$PUMACE10)
+
+
+perc_internetacc <- 
+  sc_pums %>% 
+  mutate(SCHG = as.numeric(SCHG)) %>% 
+  filter (SCHG %in% c(2:14)) %>% 
+  mutate(
+    no_internetacc = ifelse(
+      (ACCESS == "3"), 
+      WGTP, 
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    perc_no_internetacc =
+      sum(no_internetacc, na.rm =T)/sum(WGTP, na.rm = T)*100
+  ) %>% 
+  left_join(
+    sc_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
+
+
+  totalperc_nointernet <-
+    perc_internetacc 
+    sum(totalperc_nointernet$perc_no_internetacc)
+    
+    # 38.54% of students grades K-12 don't have access to internet in Santa Clara.
+    
+  sum_internetacc <- 
+  sc_pums %>% 
+  mutate(SCHG = as.numeric(SCHG)) %>% 
+  filter (SCHG %in% c(2:14)) %>% 
+  mutate(
+    no_internetacc = ifelse(
+      (ACCESS == "3"), 
+      WGTP, 
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    sum_no_internetacc =
+      sum(no_internetacc, na.rm =T)
+  ) %>% 
+  left_join(
+    sc_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
+  
+  total_nointernet <-
+    sum_internetacc
+    sum(total_nointernet$sum_no_internetacc)
+    
+    # 7894 of students grades K-12 don't have access to internet in Santa Clara
+
+# Map Creation: 
+
+saveRDS(perc_internetacc, "perc_internetacc.rds")
+
+pums_pal <- colorNumeric(
+  palette = "Purples",
+  domain = perc_internetacc$perc_no_internetacc
+)
+
+internet_acc_map <- 
+leaflet() %>%
+  addTiles() %>% 
+  addPolygons(
+    data = perc_internetacc,
+    fillColor = ~pums_pal(perc_no_internetacc),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.5,
+    weight = 1,
+    label = ~paste0(
+      round(perc_no_internetacc), 
+      "% K-12 Students without Internet Access"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = perc_internetacc,
+    pal = pums_pal,
+    values = ~perc_no_internetacc,
+    title = "% K-12 Students<br>without Internet Access<br>in Santa Clara County"
+  )
+
+saveRDS(internet_acc_map, "internet_acc_map.rds")
+```
+
+
+_Analysis_: 
+
+  In Santa Clara County 38.54% of students (or 7,894 students total) grades K-12 are without internet access. As shown in the map above,the majority of these students are concentrated in San Jose. Given the large number of students without access to internet in San Jose, it is reasonable to assume that the neighborhoods within this city are characterized by low median household incomes, and a significant portion of the city's population living below the poverty line. In the context of COVID-19, this data becomes especially pertinent. As millions of students have been required to attend online school, students without internet access at home are in danger of falling behind. With information like this, school districts and companies can ensure that each student can participate in online school by providing mobile hot spots, or discounted internet service plans. 
+
